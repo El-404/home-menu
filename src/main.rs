@@ -5,9 +5,12 @@ use home_menu::{connect_to_db, get_html, gui, models::User, secrets::{self, get_
 
 #[tokio::main]
 async fn main() {
-    let ui = gui::WindowManager::new();
+    let future_internet = tokio::spawn(start_internet());
+    let _ui = gui::start_gui();
+    future_internet.await.unwrap();
+}
 
-    // let connection = home_menu::connect_to_db().expect("Failed to connect to the database");
+async fn start_internet() {
     let app = Router::new()
         .route("/", get(main_page))
         .route("/wake", post(wake_gui))
