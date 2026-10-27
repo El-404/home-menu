@@ -21,7 +21,7 @@ pub fn connect_to_db() -> Result<PgConnection, Box<dyn Error>> {
 }
 
 pub fn connect_with_token(token: &HeaderMap) -> Result<PgConnection, Box<dyn Error>> {
-    if !secrets::is_valid_token(token) {
+    if !secrets::is_valid_auth(token) {
         return Err("Invalid token".into());
     }
     connect_to_db()
