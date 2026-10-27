@@ -1,7 +1,7 @@
 use axum::{
     Json, Router, http::{HeaderMap, StatusCode}, response::{Html, IntoResponse}, routing::{get, post},
 };
-use home_menu::{get_html, models::User, gui, secrets::{self, get_password_hash}};
+use home_menu::{connect_to_db, get_html, gui, models::User, secrets::{self, get_password_hash, user_from_auth}};
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +12,7 @@ async fn main() {
         .route("/", get(main_page))
         .route("/wake", post(wake_gui))
         .route("/add_user", post(add_user))
-        .route("/get_users", get(get_users))
+        .route("/get_users", get(users_page))
         .route("/login", get(login_page))
     ;
 
@@ -25,11 +25,13 @@ async fn main_page() -> Result<Html<String>, StatusCode> {
     Ok(html)
 }
 
-async fn get_users(head: HeaderMap) -> Result<Json<Vec<String>>, StatusCode> {
-    let mut connection = home_menu::connect_with_token(&head).expect("Failed to connect to the database");
+async fn users_page(head: HeaderMap) -> Result<Json<Vec<String>>, StatusCode> {
+    let mut connection = connect_to_db()?;
+    let _ = user_from_auth(&head, &mut connection)?;
 
     let users = home_menu::get_all_users(&mut connection)
-        .expect("Failed to retrieve users from the database");
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
     Ok(Json(users.into_iter().map(|user| user_to_json_string(&user)).collect()))
 }
 
@@ -38,21 +40,15 @@ async fn login_page() -> Result<Html<String>, StatusCode> {
     Ok(html)
 }
 
-async fn wake_gui(head: HeaderMap, body: Json<User>) -> impl IntoResponse {
-    let mut connection = home_menu::connect_to_db()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()).unwrap();
-    let users = home_menu::get_all_users(&mut connection)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()).unwrap();
-    let ph = get_password_hash(&body.password_hash);
+async fn wake_gui(head: HeaderMap, body: Json<User>) -> Result<&'static str, StatusCode> {
+    let mut connection = home_menu::connect_to_db()?;
 
-    if users.iter().any(|user| user.password_hash == ph) {
-        println!("User authenticated successfully.");
-    } else {
-        println!("Authentication failed.");
-        return StatusCode::UNAUTHORIZED.into_response();
-    }
+    let login_user = user_from_auth(&head, &mut connection)?;
 
-    StatusCode::OK.into_response()
+    // let users = home_menu::get_all_users(&mut connection.unwrap())
+        // .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok("Hello World")
 }
 
 #[derive(serde::Deserialize)]
@@ -69,24 +65,19 @@ pub fn user_to_json_string(user: &home_menu::models::User) -> String {
 }
 
 
-async fn add_user(head: HeaderMap, json: Json<AddUserRequest>) -> StatusCode {
+async fn add_user(head: HeaderMap, json: Json<AddUserRequest>) -> Result<String, StatusCode> {
     if json.username.is_empty() || json.password.is_empty() {
         println!("Invalid request: missing username, password_hash, or token.");
-        return StatusCode::BAD_REQUEST;
+        return Err(StatusCode::BAD_REQUEST);
     }
-    if !secrets::is_valid_auth(&head) {
-        println!("Invalid token provided.");
-        return StatusCode::UNAUTHORIZED;
-    }
-    let mut connection = home_menu::connect_to_db()
-        .map_err(|_| return StatusCode::INTERNAL_SERVER_ERROR).unwrap();
+    let mut connection = connect_to_db()?;
+    let _ = user_from_auth(&head, &mut connection)?;
 
     let _ = home_menu::add_user(
         json.username.as_str(), 
         secrets::get_password_hash(json.password.as_str()).as_str(),
         &mut connection
-    ).map_err(|_| return StatusCode::INTERNAL_SERVER_ERROR).unwrap();
+    ).map_err(|_| return StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    println!("User {} added successfully.", json.username);
-    return StatusCode::OK;
+    Ok(format!("User {} added successfully.", json.username))
 }

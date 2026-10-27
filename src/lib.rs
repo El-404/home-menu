@@ -1,7 +1,7 @@
 use std::error::Error;
 
-use axum::{http::{HeaderMap, StatusCode}, response::Html};
-use diesel::prelude::*;
+use axum::{http::{HeaderMap, StatusCode}, response::Html, routing::connect};
+use diesel::{pg::Pg, prelude::*};
 
 use crate::models::User;
 
@@ -14,30 +14,23 @@ pub async fn get_html(file_path: &str) -> Result<Html<String>, StatusCode> {
     Ok(Html::from(tokio::fs::read_to_string(file_path).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?))
 }
 
-pub fn connect_to_db() -> Result<PgConnection, Box<dyn Error>> {
+pub fn connect_to_db() -> Result<PgConnection, StatusCode> {
     dotenvy::dotenv().ok();
-    let database_url = std::env::var("DATABASE_URL")?;
-    Ok(PgConnection::establish(&database_url)?)
-}
+    let database_url = std::env::var("DATABASE_URL")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-pub fn connect_with_token(token: &HeaderMap) -> Result<PgConnection, Box<dyn Error>> {
-    if !secrets::is_valid_auth(token) {
-        return Err("Invalid token".into());
-    }
-    connect_to_db()
+    let connection = PgConnection::establish(&database_url)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(connection)
 }
 
 pub fn get_all_users(connection: &mut PgConnection) -> Result<Vec<User>, Box<dyn Error>> {
-    let users = 
-    schema::users::table.load::<User>(connection)?;
-
-    Ok(users)
+    Ok(schema::users::table.load::<User>(connection)?)
 }
 
 pub fn get_user_by_id(user_id: i32, connection: &mut PgConnection) -> Result<User, Box<dyn Error>> {
-    let user = schema::users::table.find(user_id).first::<User>(connection)?;
-
-    Ok(user)
+    Ok(schema::users::table.find(user_id).first::<User>(connection)?)
 }
 
 pub fn add_user(username: &str, password: &str, connection: &mut PgConnection) -> Result<(), Box<dyn Error>> {
