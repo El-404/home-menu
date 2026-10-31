@@ -1,20 +1,21 @@
 use axum::{
-    Json, Router, http::{HeaderMap, StatusCode}, response::{Html, IntoResponse}, routing::{get, post},
+    Json, Router, http::{HeaderMap, StatusCode, }, response::{Html, IntoResponse, Redirect, Response}, routing::{get, post},
 };
-use home_menu::{connect_to_db, get_html, gui, models::User, secrets::{self, get_password_hash, user_from_auth}};
+use axum_extra::{TypedHeader, extract::{CookieJar, cookie::Cookie}, headers::{Authorization, authorization::Bearer}};
+use home_menu::{connect_to_db, get_html, gui, secrets::get_password_hash};
 
 #[tokio::main]
 async fn main() {
-    let future_internet = tokio::spawn(start_internet());
+    // let mut connection = connect_to_db().expect("Failed to connect to the database");
+    // add_user("Ethan", "1234567890", &mut connection);
+    let future_internet = tokio::spawn(start_page());
     let _ui = gui::start_gui();
     future_internet.await.unwrap();
 }
 
-async fn start_internet() {
+async fn start_page() {
     let app = Router::new()
         .route("/", get(main_page))
-        .route("/wake", post(wake_gui))
-        .route("/add_user", post(add_user))
         .route("/get_users", get(users_page))
         .route("/login", get(login_page))
     ;
@@ -30,57 +31,37 @@ async fn main_page() -> Result<Html<String>, StatusCode> {
 
 async fn users_page(head: HeaderMap) -> Result<Json<Vec<String>>, StatusCode> {
     let mut connection = connect_to_db()?;
-    let _ = user_from_auth(&head, &mut connection)?;
 
-    let users = home_menu::get_all_users(&mut connection)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let users = home_menu::get_all_users(&mut connection)?;
 
-    Ok(Json(users.into_iter().map(|user| user_to_json_string(&user)).collect()))
+    Ok(Json(users.into_iter().map(|user| user.to_json_string()).collect()))
 }
 
-async fn login_page() -> Result<Html<String>, StatusCode> {
-    let html = get_html("static/401.html").await?;
-    Ok(html)
-}
-
-async fn wake_gui(head: HeaderMap, body: Json<User>) -> Result<&'static str, StatusCode> {
-    let mut connection = home_menu::connect_to_db()?;
-
-    let login_user = user_from_auth(&head, &mut connection)?;
-
-    // let users = home_menu::get_all_users(&mut connection.unwrap())
-        // .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok("Hello World")
-}
-
-#[derive(serde::Deserialize)]
-struct AddUserRequest {
-    username: String,
-    password: String,
-}
-
-pub fn user_to_json_string(user: &home_menu::models::User) -> String {
-    format!(
-        "{{\"id\": {}, \"username\": \"{}\", \"password_hash\": \"{}\"}}",
-        user.id, user.username, user.password_hash
-    )
-}
-
-
-async fn add_user(head: HeaderMap, json: Json<AddUserRequest>) -> Result<String, StatusCode> {
-    if json.username.is_empty() || json.password.is_empty() {
-        println!("Invalid request: missing username, password_hash, or token.");
-        return Err(StatusCode::BAD_REQUEST);
+async fn login_page(jar: CookieJar,) -> Result<impl IntoResponse, StatusCode> {
+    let token = jar.get("token_key");
+    if !token.is_none() {
+        let token_val = token.unwrap().value().as_bytes().to_vec();
+        let _db_token = home_menu::authorize_token(token_val).await?;
+        return Ok((jar, Redirect::to("/")).into_response());
     }
-    let mut connection = connect_to_db()?;
-    let _ = user_from_auth(&head, &mut connection)?;
+    if  let Some(username) = jar.get("username") && 
+        let Some(password) = jar.get("password")
+    {
+        let username_val = username.value().to_string();
+        let password_val = password.value().to_string();
+        
+        let mut connection = connect_to_db()?;
+        let users = home_menu::get_all_users(&mut connection)?;
 
-    let _ = home_menu::add_user(
-        json.username.as_str(), 
-        secrets::get_password_hash(json.password.as_str()).as_str(),
-        &mut connection
-    ).map_err(|_| return StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(format!("User {} added successfully.", json.username))
+        for user in users {
+            if user.username == username_val && user.password_hash == get_password_hash(&password_val){
+                let new_token = home_menu::create_token_for_user(&user, &mut connection).await?;
+                let token_value = str::from_utf8(new_token.token.as_slice())
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                    .to_string();
+                return Ok((jar.add(Cookie::new("token_key", token_value)), Redirect::to("/")).into_response());
+            }
+        }
+    }
+    Ok((jar, get_html("static/login").await).into_response())
 }

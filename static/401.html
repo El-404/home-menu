@@ -1,12 +1,53 @@
-<document>
-    <body>
-        <h1>401 Unauthorized</h1>
-        <p>You are not authorized to access this resource.</p>
-        <p>Please login to continue.</p>
-        <form>
-            <input type="text" name="username" placeholder="Username">
-            <input type="password" name="password" placeholder="Password">
-            <input type="submit" value="Submit">
-        </form>
-    </body>
-</document>
+<head>
+    <title>Home-menu</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+        }
+        h1 {
+            color: #ff0000;
+        }
+        form {
+            margin-top: 20px;
+        }
+        input[type="text"], input[type="password"] {
+            padding: 10px;
+            margin: 5px;
+            width: 200px;
+        }
+        input[type="submit"] {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        input[type="submit"]:hover {
+            background-color: #45a049;
+        }
+    </style>
+    <script>
+        function setCookie(name, value){
+          var today = new Date();
+          var expiry = new Date(today.getTime() + 1 * 24 * 3600 * 1000); // plus 1 day
+          document.cookie=name + "=" + escape(value) + "; path=/; expires=" + expiry.toGMTString();
+        }
+        function putCookie(form) {
+            setCookie("userName", form[0].username.value);
+            setCookie("password", form[0].password.value);
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <h1>401 Unauthorized</h1>
+    <p>You are not authorized to access this resource.</p>
+    <p>Please login to continue.</p>
+    <form id="login_form">
+        <input type="text" name="username" placeholder="Username">
+        <input type="password" name="password" placeholder="Password">
+        <input type="submit" value="Submit" onclick="putCookie(document.getElementById('login_form'));">
+    </form>
+</body>

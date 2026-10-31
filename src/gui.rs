@@ -31,7 +31,7 @@ enum AppState {
 
 
 
-use std::{thread, time};
+// use std::{thread, time};
 
 pub trait ScreenSaver {
     fn start(&mut self, cx: &mut Context) {
@@ -83,11 +83,11 @@ impl ScreenSaver for DVD {
     }
 
 
-    fn init(&mut self, cx: &mut Context) {
+    fn init(&mut self, _cx: &mut Context) {
         // Initialize the DVD screen saver
     }
 
-    fn end(&mut self, cx: &mut Context) {
+    fn end(&mut self, _cx: &mut Context) {
         // End the DVD screen saver
     }
 }
