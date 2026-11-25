@@ -1,13 +1,12 @@
 use vizia::prelude::*;
 
-pub fn start_gui() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_gui() {
     let mut dvd = DVD::new();
-    Application::new(move |cx| {
+    let _ = Application::new(move |cx| {
         dvd.start(cx);
     })
     .title("Home Menu")
-    .run()?;
-    Ok(())
+    .run();
 }
 
 enum AppState {

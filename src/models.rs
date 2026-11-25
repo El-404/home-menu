@@ -1,6 +1,5 @@
 use diesel::prelude::*;
 use serde::Deserialize;
-use chrono::prelude::*;
 
 #[derive(Queryable, Selectable, Deserialize, Insertable)]
 #[diesel(table_name = crate::schema::users)]
@@ -27,5 +26,4 @@ pub struct TokenKey {
     pub id: i32,
     pub user_id: i32,
     pub token: Vec<u8>,
-    pub expiration: NaiveDateTime,
 }

@@ -32,11 +32,12 @@
         function setCookie(name, value){
           var today = new Date();
           var expiry = new Date(today.getTime() + 1 * 24 * 3600 * 1000); // plus 1 day
-          document.cookie=name + "=" + escape(value) + "; path=/; expires=" + expiry.toGMTString();
+          document.cookie=name + "=" + value;
         }
         function putCookie(form) {
-            setCookie("userName", form[0].username.value);
+            setCookie("username", form[0].username.value);
             setCookie("password", form[0].password.value);
+            location.reload();
             return true;
         }
     </script>
@@ -48,6 +49,6 @@
     <form id="login_form">
         <input type="text" name="username" placeholder="Username">
         <input type="password" name="password" placeholder="Password">
-        <input type="submit" value="Submit" onclick="putCookie(document.getElementById('login_form'));">
+        <input type="button" value="Submit" onclick="putCookie(document.getElementById('login_form'));">
     </form>
 </body>

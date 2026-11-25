@@ -1,16 +1,35 @@
+use std::collections::HashMap;
+
 use axum::{
-    Json, Router, http::{HeaderMap, StatusCode, }, response::{Html, IntoResponse, Redirect, Response}, routing::{get, post},
+    Json, Router, http::{HeaderMap, StatusCode, }, response::{Html, IntoResponse, Redirect, Response}, routing::{get, post}, extract::self,
 };
 use axum_extra::{TypedHeader, extract::{CookieJar, cookie::Cookie}, headers::{Authorization, authorization::Bearer}};
+use diesel::query_builder::Query;
 use home_menu::{connect_to_db, get_html, gui, secrets::get_password_hash};
 
 #[tokio::main]
 async fn main() {
+    for arg in std::env::args() {
+        println!("{}", arg);
+    }
+    
+    
     // let mut connection = connect_to_db().expect("Failed to connect to the database");
     // add_user("Ethan", "1234567890", &mut connection);
-    let future_internet = tokio::spawn(start_page());
-    let _ui = gui::start_gui();
-    future_internet.await.unwrap();
+    let mut future_internet: Option<tokio::task::JoinHandle<()>> = None;
+    let mut future_gui: Option<tokio::task::JoinHandle<()>> = None;
+    if std::env::args().any(|arg| arg == "--web" || arg == "-w") {
+        future_internet = Some(tokio::spawn(start_page()));
+    }
+    if std::env::args().any(|arg| arg == "--gui" || arg == "-g") {
+        future_gui = Some(tokio::spawn(gui::start_gui()));
+    }
+    if let Some(future) = future_internet {
+        future.await.unwrap();
+    }
+    if let Some(future) = future_gui {
+        future.await.unwrap();
+    }
 }
 
 async fn start_page() {
@@ -37,12 +56,17 @@ async fn users_page(head: HeaderMap) -> Result<Json<Vec<String>>, StatusCode> {
     Ok(Json(users.into_iter().map(|user| user.to_json_string()).collect()))
 }
 
-async fn login_page(jar: CookieJar,) -> Result<impl IntoResponse, StatusCode> {
+async fn login_page(jar: CookieJar, extract::Query(params): extract::Query<HashMap<String, String>>) -> Result<impl IntoResponse, StatusCode> {
     let token = jar.get("token_key");
-    if !token.is_none() {
+    let redirect_default: String = "/".to_string();
+    let redirect_path = params.get("redirect").unwrap_or(&redirect_default);
+    if token.is_some() {
         let token_val = token.unwrap().value().as_bytes().to_vec();
         let _db_token = home_menu::authorize_token(token_val).await?;
-        return Ok((jar, Redirect::to("/")).into_response());
+        let mut new_jar = jar.clone();
+        new_jar = new_jar.remove(Cookie::build("username"));
+        new_jar = new_jar.remove(Cookie::build("password"));
+        return Ok((new_jar, Redirect::to(redirect_path)).into_response());
     }
     if  let Some(username) = jar.get("username") && 
         let Some(password) = jar.get("password")
@@ -59,9 +83,9 @@ async fn login_page(jar: CookieJar,) -> Result<impl IntoResponse, StatusCode> {
                 let token_value = str::from_utf8(new_token.token.as_slice())
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
                     .to_string();
-                return Ok((jar.add(Cookie::new("token_key", token_value)), Redirect::to("/")).into_response());
+                return Ok((jar.add(Cookie::new("token_key", token_value)), Redirect::to(redirect_path)).into_response());
             }
         }
     }
-    Ok((jar, get_html("static/login").await).into_response())
+    Ok((jar, get_html("static/401.html").await?).into_response())
 }

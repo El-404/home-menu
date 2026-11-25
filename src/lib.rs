@@ -1,6 +1,7 @@
 use std::error::Error;
 
 use axum::{http::StatusCode, response::Html};
+use chrono::Datelike;
 use diesel::{dsl::insert_into, prelude::*};
 
 use crate::{models::{TokenKey, User}};
@@ -60,11 +61,7 @@ pub async fn authorize_token(token_key: Vec<u8>) -> Result<TokenKey, StatusCode>
     let tokens = get_all_tokens(&mut connection)?;
 
     for db_token in tokens {
-        if db_token.expiration < chrono::Local::now().naive_local() {
-            diesel::delete(schema::token_key::table.filter(schema::token_key::id.eq(db_token.id)))
-                .execute(&mut connection)
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        } else if db_token.token == token_key {
+        if db_token.token == token_key {
             return Ok(db_token);
         }
     }
@@ -75,10 +72,12 @@ pub async fn authorize_token(token_key: Vec<u8>) -> Result<TokenKey, StatusCode>
 
 pub async fn create_token_for_user(user: &User, connection: &mut PgConnection) -> Result<TokenKey, StatusCode> {
     let id = -1;
-    let expiration = chrono::Local::now().naive_local() + chrono::Duration::days(1);
-    let token = secrets::get_password_hash(&user.username).as_bytes().to_vec();
+    let token_gen = chrono::Local::now().day().to_string().to_owned() + &user.username;
+    let token = secrets::get_password_hash(&token_gen)
+        .as_bytes().to_vec();
 
-    let new_token = TokenKey { id, user_id: user.id, token, expiration };
+        
+    let new_token = TokenKey { id, user_id: user.id, token };
 
     insert_into(schema::token_key::table).values(&new_token).execute(connection)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

@@ -5,7 +5,6 @@ diesel::table! {
         id -> Int4,
         user_id -> Int4,
         token -> Bytea,
-        expiration -> Timestamp,
     }
 }
 
